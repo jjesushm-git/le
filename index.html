@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lector EPUB</title>
+    <meta name="theme-color" content="#0B3C2A">
+    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Lector%20EPUB%22,%22short_name%22:%22LectorEPUB%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22#FBF9F0%22,%22theme_color%22:%22#0B3C2A%22}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+    
+    <!-- Librerías Externas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- html-docx-js o docx generator ligero -->
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+
+    <style>
+        :root {
+            --bg-header: #0B3C2A;
+            --text-header: #F4E8C1;
+            --bg-body: #FBF9F0;
+            --text-body: #2B261F;
+            --bg-card: #FFFFFF;
+            --accent-gold: #C5A059;
+            --border-color: #E2DAC6;
+            --quote-bg: #F3EFE0;
+            --font-size: 18px;
+            --line-height: 1.8;
+        }
+
+        body.theme-dark {
+            --bg-body: #191C1B;
+            --text-body: #E2E3DF;
+            --bg-card: #222624;
+            --border-color: #3B423E;
+            --quote-bg: #282E2B;
+        }
+
+        body.theme-sepia {
+            --bg-body: #F4ECD8;
+            --text-body: #4A3E2C;
+            --bg-card: #FAF4E8;
+            --border-color: #E0D3B8;
+            --quote-bg: #EAE0C8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-body);
+            font-family: 'Merriweather', Georgia, serif;
+            font-size: var(--font-size);
+            line-height: var(--line-height);
+            transition: background-color 0.3s, color 0.3s;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        header {
+            background-color: var(--bg-header);
+            color: var(--text-header);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .brand-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #F4E8C1;
+            text-decoration: none;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-icon {
+            background: transparent;
+            border: 1px solid rgba(244, 232, 193, 0.3);
+            color: var(--text-header);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: rgba(244, 232, 193, 0.15);
+            border-color: var(--accent-gold);
+        }
+
+        /* TOOLBAR CONTROLS */
+        .toolbar {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            font-size: 0.9rem;
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-tool {
+            background: var(--bg-body);
+            border: 1px solid var(--border-color);
+            color: var(--text-body);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn-tool:hover {
+            border-color: var(--accent-gold);
+            background: var(--quote-bg);
+        }
+
+        /* MAIN CONTAINER */
+        main {
+            flex: 1;
+            max-width: 850px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 30px 20px 60px 20px;
+        }
+
+        /* UPLOAD ZONE */
+        .upload-card {
+            background: var(--bg-card);
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .upload-card:hover {
+            border-color: var(--accent-gold);
+        }
+
+        .upload-card input {
+            display: none;
+        }
+
+        /* RECENT BOOKS LIST */
+        .recents-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .recents-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent-gold);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .recents-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .recent-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-body);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .recent-item:hover {
+            border-color: var(--accent-gold);
+            transform: translateX(4px);
+        }
+
+        .recent-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .recent-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .recent-date {
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
+
+        /* READER CONTENT (ESTILO RANOA) */
+        #reader-container {
+            display: none;
+        }
+
+        .article-content {
+            background: var(--bg-body);
+        }
+
+        .article-content h1, .article-content h2, .article-content h3 {
+            font-family: 'Cinzel', serif;
+            color: var(--accent-gold);
+            margin: 1.8em 0 0.8em 0;
+            line-height: 1.3;
+        }
+
+        .article-content p {
+            margin-bottom: 1.4em;
+            text-align: justify;
+        }
+
+        /* Estilo Cuadros Destacados tipo Ranoa */
+        .article-content blockquote, .article-content .callout-box {
+            background-color: var(--quote-bg);
+            border-left: 4px solid var(--accent-gold);
+            padding: 16px 20px;
+            margin: 1.8em 0;
+            border-radius: 0 6px 6px 0;
+            font-style: italic;
+        }
+
+        /* AUDIO PLAYER BANNER */
+        .audio-bar {
+            display: none;
+            background: var(--quote-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 16px;
+            margin-bottom: 20px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .audio-bar.active {
+            display: flex;
+        }
+
+        /* FOOTER */
+        footer {
+            background-color: var(--bg-header);
+            color: var(--text-header);
+            text-align: center;
+            padding: 15px;
+            font-size: 0.85rem;
+            margin-top: auto;
+        }
+
+        /* PDF Canvas View */
+        #pdf-canvas-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header>
+        <a href="#" class="brand-title" onclick="showHome(); return false;">
+            📖 Lector EPUB
+        </a>
+        <div class="header-controls">
+            <button class="btn-icon" onclick="toggleTheme()">🌓 Tema</button>
+            <button class="btn-icon" onclick="showHome()">📚 Mis Libros</button>
+        </div>
+    </header>
+
+    <!-- TOOLBAR (Controles de lectura y exportación) -->
+    <div class="toolbar" id="reader-toolbar" style="display: none;">
+        <div class="toolbar-group">
+            <button class="btn-tool" onclick="adjustFontSize(-2)">A-</button>
+            <button class="btn-tool" onclick="adjustFontSize(2)">A+</button>
+            <span id="font-size-label" style="font-size: 0.8rem; opacity: 0.8;">18px</span>
+        </div>
+
+        <div class="toolbar-group">
+            <button class="btn-tool" onclick="toggleAudio()"><span id="audio-icon">🔊</span> Escuchar Audio</button>
+        </div>
+
+        <div class="toolbar-group">
+            <button class="btn-tool" onclick="exportToTXT()">📄 Guardar TXT</button>
+            <button class="btn-tool" onclick="exportToDOCX()">📝 Guardar Word (.docx)</button>
+        </div>
+    </div>
+
+    <!-- REPRODUCTOR DE AUDIO -->
+    <div class="audio-bar" id="audio-controls">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: bold;">🎙️ Reproduciendo Audio</span>
+            <span id="speech-status" style="font-size: 0.85rem; opacity: 0.8;">(Narración por voz)</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn-tool" onclick="pauseAudio()">⏸️ Pausar</button>
+
+            <button class="btn-tool" onclick="stopAudio()">⏹️ Detener</button>
+        </div>
+    </div>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main>
+        <!-- VISTA DE INICIO / CARGA -->
+        <div id="home-view">
+            <div class="upload-card" onclick="document.getElementById('file-input').click()">
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">📂</div>
+                <h3 style="font-family: 'Cinzel', serif; margin-bottom: 8px;">Cargar Nuevo Libro o Documento</h3>
+                <p style="font-size: 0.9rem; opacity: 0.8;">Soporta formatos: .epub, .pdf, .docx, .txt, .md</p>
+                <input type="file" id="file-input" accept=".epub,.pdf,.docx,.txt,.md" onchange="handleFileUpload(event)">
+            </div>
+
+            <div class="recents-section">
+                <h2 class="recents-title">Lecturas Recientes (Guardadas en Caché)</h2>
+                <ul class="recents-list" id="recents-list">
+                    <li style="font-size: 0.9rem; opacity: 0.7; padding: 10px;">No hay lecturas recientes en caché.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- VISTA DEL LECTOR -->
+        <div id="reader-container">
+            <h1 id="book-title" style="font-family: 'Cinzel', serif; color: var(--accent-gold); margin-bottom: 20px; font-size: 1.8rem;"></h1>
+            
+            <!-- Vista de texto enriquecido / HTML / EPUB / DOCX / TXT -->
+            <div id="text-view" class="article-content"></div>
+
+            <!-- Vista de páginas PDF -->
+            <div id="pdf-canvas-container"></div>
+        </div>
+    </main>
+
+    <footer>
+        Lector EPUB &bull; Formato Ranoa &bull; PWA Offline
+    </footer>
+
+    <script>
+        // --- BASE DE DATOS LOCAL INDEXEDDB PARA CACHÉ DE LIBROS ---
+        const DB_NAME = 'LectorEpubDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'books';
+        let db;
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains(STORE_NAME)) {
+                        database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        async function saveBookToDB(book) {
+            if (!db) await initDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                store.put(book);
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e);
+            });
+        }
+
+        async function getBookFromDB(id) {
+            if (!db) await initDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.get(id);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        async function getAllBooksFromDB() {
+            if (!db) await initDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        // --- ESTADO GLOBAL ---
+        let currentTextContent = "";
+        let currentBookTitle = "";
+        let synth = window.speechSynthesis;
+        let utterance = null;
+        let isSpeaking = false;
+        let currentFontSize = 18;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initDB();
+            loadRecentsList();
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        });
+
+        // --- MANEJO DE VISTAS ---
+        function showHome() {
+            stopAudio();
+            document.getElementById('home-view').style.display = 'block';
+            document.getElementById('reader-container').style.display = 'none';
+            document.getElementById('reader-toolbar').style.display = 'none';
+            loadRecentsList();
+        }
+
+        function showReader() {
+            document.getElementById('home-view').style.display = 'none';
+            document.getElementById('reader-container').style.display = 'block';
+            document.getElementById('reader-toolbar').style.display = 'flex';
+        }
+
+        // --- MODO Y TEMA ---
+        function toggleTheme() {
+            const body = document.body;
+            if (body.classList.contains('theme-dark')) {
+                body.classList.remove('theme-dark');
+                body.classList.add('theme-sepia');
+            } else if (body.classList.contains('theme-sepia')) {
+                body.classList.remove('theme-sepia');
+            } else {
+                body.classList.add('theme-dark');
+            }
+        }
+
+        function adjustFontSize(delta) {
+            currentFontSize = Math.max(12, Math.min(32, currentFontSize + delta));
+            document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+            document.getElementById('font-size-label').innerText = `${currentFontSize}px`;
+        }
+
+        // --- CARGA DE ARCHIVOS ---
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const arrayBuffer = await file.arrayBuffer();
+            const bookId = 'book_' + Date.now();
+            const bookRecord = {
+                id: bookId,
+                name: file.name,
+                type: file.name.split('.').pop().toLowerCase(),
+                data: arrayBuffer,
+                date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+            };
+
+            await saveBookToDB(bookRecord);
+            await renderBook(bookRecord);
+        }
+
+        async function loadRecentBook(id) {
+            const bookRecord = await getBookFromDB(id);
+            if (bookRecord) {
+                await renderBook(bookRecord);
+            }
+        }
+
+        async function loadRecentsList() {
+            const books = await getAllBooksFromDB();
+            const listEl = document.getElementById('recents-list');
+            if (!books || books.length === 0) {
+                listEl.innerHTML = '<li style="font-size: 0.9rem; opacity: 0.7; padding: 10px;">No hay lecturas recientes en caché.</li>';
+                return;
+            }
+
+            listEl.innerHTML = books.reverse().map(b => `
+                <li class="recent-item" onclick="loadRecentBook('${b.id}')">
+                    <div class="recent-info">
+                        <span class="recent-name">📖 ${b.name}</span>
+                        <span class="recent-date">Añadido el ${b.date}</span>
+                    </div>
+                    <span style="font-size: 0.8rem; opacity: 0.7; text-transform: uppercase;">${b.type}</span>
+                </li>
+            `).join('');
+        }
+
+        // --- RENDERIZADO DE CONTENIDOS ---
+        async function renderBook(book) {
+            currentBookTitle = book.name;
+            document.getElementById('book-title').innerText = currentBookTitle;
+            const textView = document.getElementById('text-view');
+            const pdfView = document.getElementById('pdf-canvas-container');
+            textView.innerHTML = '';
+            pdfView.innerHTML = '';
+            currentTextContent = '';
+
+            showReader();
+
+            if (book.type === 'txt' || book.type === 'md') {
+                const decoder = new TextDecoder('utf-8');
+                const text = decoder.decode(book.data);
+                currentTextContent = text;
+                textView.innerHTML = text.split('\n\n').map(p => `<p>${escapeHtml(p)}</p>`).join('');
+            } 
+            else if (book.type === 'docx') {
+                const result = await mammoth.convertToHtml({ arrayBuffer: book.data });
+                textView.innerHTML = cleanContent(result.value);
+                currentTextContent = textView.innerText;
+            } 
+            else if (book.type === 'epub') {
+                await renderEpub(book.data);
+            } 
+            else if (book.type === 'pdf') {
+                await renderPDF(book.data);
+            }
+        }
+
+        function cleanContent(html) {
+            // Remueve referencias explícitas a ilustraciones o imágenes para mantener solo el texto
+            let temp = document.createElement('div');
+            temp.innerHTML = html;
+            
+            // Eliminar etiquetas de imagen
+            const imgs = temp.querySelectorAll('img, svg, figure, figcaption');
+            imgs.forEach(img => img.remove());
+            
+            return temp.innerHTML;
+        }
+
+        async function renderEpub(arrayBuffer) {
+            const zip = await JSZip.loadAsync(arrayBuffer);
+            let htmlText = "";
+            
+            const files = Object.keys(zip.files).filter(f => f.endsWith('.xhtml') || f.endsWith('.html'));
+            for (let f of files) {
+                const content = await zip.files[f].async('text');
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, 'text/html');
+                
+                // Remover imágenes o ilustraciones del EPUB
+                doc.querySelectorAll('img, svg, figure, figcaption').forEach(el => el.remove());
+
+                const bodyContent = doc.body ? doc.body.innerHTML : content;
+                htmlText += `<div class="epub-section">${bodyContent}</div>`;
+            }
+
+            const textView = document.getElementById('text-view');
+            textView.innerHTML = htmlText;
+            currentTextContent = textView.innerText;
+        }
+
+        async function renderPDF(arrayBuffer) {
+            const pdfView = document.getElementById('pdf-canvas-container');
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            
+            let fullText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                
+                // Extraer texto plano para audio y exportación
+                const tokenized = await page.getTextContent();
+                const pageText = tokenized.items.map(item => item.str).join(' ');
+                fullText += pageText + "\n\n";
+
+                // Renderizar Canvas
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                pdfView.appendChild(canvas);
+            }
+
+            currentTextContent = fullText;
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        // --- EXPORTAR TEXTO Y WORD (.DOCX) SIN ILUSTRACIONES ---
+        function getCleanPlainText() {
+            if (currentTextContent && currentTextContent.trim().length > 0) {
+                return currentTextContent.replace(/\[Ilustración.*?\]/gi, '').replace(/\[Imagen.*?\]/gi, '');
+            }
+            const textView = document.getElementById('text-view');
+            return textView.innerText.replace(/\[Ilustración.*?\]/gi, '').replace(/\[Imagen.*?\]/gi, '');
+        }
+
+        function exportToTXT() {
+            const text = getCleanPlainText();
+            if (!text) {
+                alert("No hay texto disponible para exportar.");
+                return;
+            }
+
+            const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${currentBookTitle.replace(/\.[^/.]+$/, "")}_texto.txt`;
+            link.click();
+        }
+
+        async function exportToDOCX() {
+            const text = getCleanPlainText();
+            if (!text) {
+                alert("No hay texto disponible para exportar.");
+                return;
+            }
+
+            try {
+                const paragraphs = text.split('\n\n').map(p => {
+                    return new docx.Paragraph({
+                        children: [
+                            new docx.TextRun({
+                                text: p.trim(),
+                                font: "Georgia",
+                                size: 24 // 12pt
+                            })
+                        ],
+                        spacing: { after: 200 }
+                    });
+                });
+
+                const doc = new docx.Document({
+                    sections: [{
+                        properties: {},
+                        children: [
+                            new docx.Paragraph({
+                                text: currentBookTitle,
+                                heading: docx.HeadingLevel.HEADING_1,
+                                spacing: { after: 400 }
+                            }),
+                            ...paragraphs
+                        ]
+                    }]
+                });
+
+                const blob = await docx.Packer.toBlob(doc);
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `${currentBookTitle.replace(/\.[^/.]+$/, "")}.docx`;
+                link.click();
+            } catch (err) {
+                console.error(err);
+                alert("Error al generar el archivo Word.");
+            }
+        }
+
+        // --- LECTURA POR VOZ (AUDIO) ---
+        function toggleAudio() {
+            if (isSpeaking) {
+                pauseAudio();
+            } else {
+                playAudio();
+            }
+        }
+
+        function playAudio() {
+            const text = getCleanPlainText();
+            if (!text) return;
+
+            if (synth.paused) {
+                synth.resume();
+                isSpeaking = true;
+                updateAudioUI();
+                return;
+            }
+
+            synth.cancel(); // Limpiar anteriores
+            utterance = new SpeechSynthesisUtterance(text.substring(0, 4000)); // Límite por bloque para fluidez
+            utterance.lang = 'es-ES';
+            
+            utterance.onend = () => {
+                isSpeaking = false;
+                updateAudioUI();
+            };
+
+            synth.speak(utterance);
+            isSpeaking = true;
+            updateAudioUI();
+        }
+
+        function pauseAudio() {
+            if (synth.speaking) {
+                synth.pause();
+                isSpeaking = false;
+                updateAudioUI();
+            }
+        }
+
+        function stopAudio() {
+            synth.cancel();
+            isSpeaking = false;
+            updateAudioUI();
+        }
+
+        function updateAudioUI() {
+            const audioControls = document.getElementById('audio-controls');
+            const icon = document.getElementById('audio-icon');
+            if (isSpeaking) {
+                audioControls.classList.add('active');
+                icon.innerText = '⏸️';
+            } else {
+                audioControls.classList.remove('active');
+                icon.innerText = '🔊';
+            }
+        }
+    </script>
+</body>
+</html>
